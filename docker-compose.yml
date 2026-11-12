@@ -1,0 +1,57 @@
+# Deploy para VPS Hostinger com o Traefik do Docker Manager (traefik-mkfr).
+# Site em https://edoganjore.com.br (registro A do domínio apontando para o IP do VPS).
+# O Traefik roda em network_mode: host e alcança o container pelo IP interno,
+# então basta declarar as labels; nenhuma porta é exposta no host.
+services:
+  screenshare:
+    build: .
+    restart: unless-stopped
+    environment:
+      MAX_VIEWERS: "10"
+      # Segredos ficam no arquivo .env do servidor (veja .env.example), fora do Git.
+      # Sem DISCORD_CLIENT_ID o login com Discord fica desligado e a página pede só o nick.
+      PUBLIC_URL: "https://edoganjore.com.br"
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"
+      DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"
+      DISCORD_GUILD_ID: "${DISCORD_GUILD_ID:-}"
+      TURN_URL: "turn:srv1597622.hstgr.cloud:3478?transport=udp,turn:srv1597622.hstgr.cloud:3478?transport=tcp"
+      TURN_USER: "screenshare"
+      TURN_PASS: "${TURN_PASS:?defina TURN_PASS no arquivo .env}"
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.screenshare.loadbalancer.server.port=8080
+      # site principal: domínio próprio, na raiz
+      - traefik.http.routers.screenshare.rule=Host(`edoganjore.com.br`)
+      - traefik.http.routers.screenshare.entrypoints=websecure
+      - traefik.http.routers.screenshare.tls.certresolver=letsencrypt
+      # um certificado só para os dois nomes (o router do www usa o mesmo)
+      - traefik.http.routers.screenshare.tls.domains[0].main=edoganjore.com.br
+      - traefik.http.routers.screenshare.tls.domains[0].sans=www.edoganjore.com.br
+      - traefik.http.routers.screenshare.service=screenshare
+      # www -> sem www (router separado: se o DNS do www não existir, o principal não é afetado)
+      - traefik.http.routers.screenshare-www.rule=Host(`www.edoganjore.com.br`)
+      - traefik.http.routers.screenshare-www.entrypoints=websecure
+      - traefik.http.routers.screenshare-www.tls=true
+      - traefik.http.routers.screenshare-www.service=screenshare
+      - traefik.http.routers.screenshare-www.middlewares=screenshare-www
+      - traefik.http.middlewares.screenshare-www.redirectregex.regex=^https?://www\.edoganjore\.com\.br/(.*)
+      - traefik.http.middlewares.screenshare-www.redirectregex.replacement=https://edoganjore.com.br/$${1}
+      - traefik.http.middlewares.screenshare-www.redirectregex.permanent=true
+      # endereço antigo (/tela no host do VPS) -> domínio novo, para os links já enviados continuarem valendo
+      - traefik.http.routers.screenshare-old.rule=Host(`srv1597622.hstgr.cloud`) && PathPrefix(`/tela`)
+      - traefik.http.routers.screenshare-old.entrypoints=websecure
+      - traefik.http.routers.screenshare-old.tls.certresolver=letsencrypt
+      - traefik.http.routers.screenshare-old.service=screenshare
+      - traefik.http.routers.screenshare-old.middlewares=screenshare-old
+      - traefik.http.middlewares.screenshare-old.redirectregex.regex=^https?://srv1597622\.hstgr\.cloud/tela/?(.*)
+      - traefik.http.middlewares.screenshare-old.redirectregex.replacement=https://edoganjore.com.br/$${1}
+
+  # TURN: relay para quando a conexão direta não fecha (NAT/firewall corporativo).
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    network_mode: host
+    command: >
+      -n --listening-port=3478 --fingerprint --lt-cred-mech
+      --user=screenshare:${TURN_PASS:?defina TURN_PASS no arquivo .env} --realm=srv1597622.hstgr.cloud
+      --min-port=49160 --max-port=49200 --no-cli
