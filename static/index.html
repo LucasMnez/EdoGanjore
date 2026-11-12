@@ -12,8 +12,8 @@
 <style>
   :root {
     color-scheme: dark;
-    --bg:#1A1A1E; --panel:#242429; --panel-2:#33343C; --line:#303138; --line-2:#3F414B;
-    --text:#F2F3F5; --text-2:#DBDEE1; --muted:#A6A9B3;
+    --bg:#121214; --panel:#1A1A1E; --panel-2:#222327; --line:#26272C; --line-2:#34353C;
+    --text:#F2F3F5; --text-2:#DBDEE1; --muted:#8E909B; --dim:#6C6D76;
     --accent:#5865F2; --accent-ink:#FFFFFF; --accent-text:#A9B0FB; --accent-soft:#2C2F63;
     --danger:#DA373C; --live:#F23F43; --live-soft:#3F1D20; --warn:#F0B232; --warn-soft:#33290F; --ok:#3BC574;
     --sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -30,7 +30,7 @@
   :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
   /* ---------- peças comuns ---------- */
-  .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: #121214; }
+  .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--bg); }
   .topbar .group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); background: none; border: 0; padding: 0; cursor: pointer; }
   .brand .mark { width: 32px; height: 32px; border-radius: 9px; flex: none; }
@@ -39,9 +39,9 @@
   .card h2 { margin: 0; font-size: 15px; font-weight: 600; }
   .lbl { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-2); }
   .field { height: 44px; background: var(--bg); border: 1px solid var(--line-2); border-radius: 10px; padding: 0 12px; font-size: 14px; width: 100%; }
-  .field::placeholder { color: #8E919B; }
+  .field::placeholder { color: var(--dim); }
   .btn { height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: var(--panel-2); color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; text-decoration: none; }
-  .btn:hover { background: #3F414B; }
+  .btn:hover { background: #2C2D33; }
   .btn:disabled { opacity: .45; cursor: default; }
   .btn.primary { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
   .btn.primary:hover { background: #4752C4; }
@@ -73,7 +73,8 @@
   .tag.live { background: var(--live); color: #fff; font-weight: 700; letter-spacing: .04em; }
   .spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--line-2); border-top-color: var(--accent); animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
+  .or { display: flex; align-items: center; gap: 12px; color: var(--dim); font-size: 13px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line-2); }
 
   /* ---------- início ---------- */
@@ -144,8 +145,9 @@
   .member .who b { font-size: 14px; font-weight: 600; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .member.sharing .who b { color: var(--text); }
   .member .who span { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .member .who .tag.live { color: #fff; }
   .member .eye { width: 36px; height: 36px; flex: none; border: 0; border-radius: 9px; cursor: pointer; display: grid; place-items: center; background: var(--panel-2); color: var(--text); }
-  .member .eye[aria-pressed="false"] { background: transparent; color: #8E919B; }
+  .member .eye[aria-pressed="false"] { background: transparent; color: var(--dim); }
   .requests { display: flex; flex-direction: column; gap: 8px; }
   .request { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: var(--warn-soft); border: 1px solid #5C4A1A; border-radius: 12px; padding: 10px 12px; }
   .request .avatar { width: 28px; height: 28px; font-size: 10px; }
@@ -154,7 +156,13 @@
   .strip button { height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--panel); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
   .host-warn { margin: 0; background: var(--warn-soft); border: 1px solid #5C4A1A; color: #F6DFA6; border-radius: 12px; padding: 10px 14px; font-size: 14px; }
 
-  .tiles { flex: 1; min-height: 240px; display: grid; gap: 12px; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
+  .tiles { flex: 1; min-height: 240px; display: grid; gap: 12px; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); grid-auto-rows: minmax(120px, 1fr); overflow: auto; }
+  /* quem está na sala sem tela visível: só o avatar, como num canal de voz */
+  .tile.person { background: var(--panel); border-color: var(--line); display: grid; place-items: center; }
+  .tile.person .face .avatar { width: 80px; height: 80px; font-size: 26px; }
+  .tile.person .show { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); }
+  .tiles.focus .tile.person:not(.main) .face .avatar { width: 44px; height: 44px; font-size: 15px; }
+  .tiles.focus .tile.person:not(.main) .show { display: none; }
   .tiles.n3:not(.focus) .tile.odd { grid-column: 1 / -1; justify-self: center; width: calc(50% - 6px); }
   .tiles.focus { grid-template-columns: minmax(0, 1fr) 220px; grid-template-rows: repeat(var(--thumbs, 1), 132px) minmax(0, 1fr); grid-auto-rows: auto; overflow: auto; }
   .tiles.focus .tile.main { grid-column: 1; grid-row: 1 / -1; min-height: 280px; }
@@ -196,10 +204,19 @@
   .state-box .field { width: 200px; }
 
   .dock-wrap { position: relative; }
-  .dock { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
-  .dock .btn { height: 48px; }
-  .dock .sep { width: 1px; height: 28px; background: var(--line-2); }
-  .dock .seg { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 104px; }
+  .dock { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; padding: 4px 0; }
+  .dock-group { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 6px; }
+  .dk { min-width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--text); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .dk:hover { background: var(--panel-2); }
+  .dk:disabled { opacity: .45; cursor: default; }
+  .dk[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); }
+  .dk.on { color: var(--ok); }
+  .dk.share { background: var(--accent); color: #fff; padding: 0 16px; font-weight: 700; }
+  .dk.share:hover { background: #4752C4; }
+  .dk.share.stop { background: var(--live-soft); color: #FF9B9E; }
+  .dk.share.stop:hover { background: #56262A; }
+  .dk.leave { background: var(--danger); color: #fff; min-width: 68px; height: 58px; border-radius: 14px; }
+  .dk.leave:hover { background: #B92D32; }
   .quality { position: absolute; right: 0; bottom: calc(100% + 10px); width: min(360px, 100%); max-height: min(70vh, 560px); overflow: auto; background: var(--panel); border: 1px solid var(--line-2); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.5); z-index: 5; }
   .quality h2 { margin: 0; font-size: 15px; font-weight: 600; }
   .inline-lbl { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; color: var(--text-2); }
@@ -361,7 +378,6 @@
   <div class="room-body">
     <div class="stage-col">
       <div class="requests hidden" id="requests"></div>
-      <div class="strip hidden" id="hidden-strip"></div>
 
       <div class="tiles" id="tiles">
         <div class="state-box" id="state-box">
@@ -399,17 +415,18 @@
         </div>
 
         <div class="dock">
-          <button class="btn primary" id="share-toggle" type="button"><svg width="18" height="18"><use href="#i-share"/></svg><span>Compartilhar tela</span></button>
-          <button class="btn sharing-only hidden" id="pause" type="button"><svg width="18" height="18"><use href="#i-pause"/></svg><span>Pausar</span></button>
-          <button class="btn sharing-only hidden" id="host-audio" type="button"><svg width="18" height="18"><use href="#i-mute"/></svg><span>Ativar áudio</span></button>
-          <button class="btn sharing-only hidden" id="self-hide" type="button" aria-pressed="false"><svg width="18" height="18"><use href="#i-eye-off"/></svg><span>Ocultar minha tela</span></button>
-          <span class="sep"></span>
-          <div class="seg" role="group" aria-label="Layout">
-            <button type="button" id="lay-grid" aria-pressed="true" aria-label="Grade" title="Grade (G)"><svg width="16" height="16"><use href="#i-grid"/></svg></button>
-            <button type="button" id="lay-focus" aria-pressed="false" aria-label="Destaque" title="Destaque (G)"><svg width="16" height="16"><use href="#i-focus"/></svg></button>
+          <div class="dock-group">
+            <button class="dk share" id="share-toggle" type="button"><svg width="20" height="20"><use href="#i-share"/></svg><span>Compartilhar tela</span></button>
+            <button class="dk sharing-only hidden" id="host-audio" type="button"><svg width="20" height="20"><use href="#i-mute"/></svg><span class="sr">Ativar áudio</span></button>
+            <button class="dk sharing-only hidden" id="pause" type="button"><svg width="20" height="20"><use href="#i-pause"/></svg><span class="sr">Pausar</span></button>
+            <button class="dk sharing-only hidden" id="self-hide" type="button" aria-pressed="false"><svg width="20" height="20"><use href="#i-eye-off"/></svg><span class="sr">Ocultar minha tela</span></button>
           </div>
-          <button class="btn icon sharing-only hidden" id="quality-btn" type="button" aria-pressed="false" aria-label="Qualidade da minha transmissão" title="Qualidade e diagnóstico" style="width:48px"><svg width="18" height="18"><use href="#i-sliders"/></svg></button>
-          <button class="btn" id="leave" type="button"><svg width="16" height="16"><use href="#i-left"/></svg>Sair da sala</button>
+          <div class="dock-group">
+            <button class="dk" type="button" id="lay-grid" aria-pressed="true" aria-label="Grade" title="Grade (G)"><svg width="20" height="20"><use href="#i-grid"/></svg></button>
+            <button class="dk" type="button" id="lay-focus" aria-pressed="false" aria-label="Destaque" title="Destaque (G)"><svg width="20" height="20"><use href="#i-focus"/></svg></button>
+            <button class="dk sharing-only hidden" id="quality-btn" type="button" aria-pressed="false" aria-label="Qualidade da minha transmissão" title="Qualidade e diagnóstico"><svg width="20" height="20"><use href="#i-sliders"/></svg></button>
+          </div>
+          <button class="dk leave" id="leave" type="button" aria-label="Sair da sala" title="Sair da sala"><svg width="22" height="22"><use href="#i-left"/></svg></button>
         </div>
       </div>
     </div>
@@ -495,6 +512,8 @@ const colorOf = n => COLORS[[...(n || "")].reduce((a, c) => a + c.charCodeAt(0),
 const fmtRate = bps => bps >= 1e6 ? (bps / 1e6).toFixed(1).replace(".", ",") + " Mb/s" : Math.round(bps / 1e3) + " kb/s";
 const typing = e => /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
 const roomLink = code => `${location.origin}${BASE}?room=${encodeURIComponent(code)}`;
+/** Botão só com ícone: o texto fica para leitores de tela e como dica ao passar o mouse. */
+const label = (btn, text) => { btn.querySelector("span").textContent = text; btn.title = text; };
 const svg = (id, size = 16) => `<svg width="${size}" height="${size}"><use href="#${id}"/></svg>`;
 
 /** Avatar do Discord, com as iniciais como reserva se não houver imagem ou ela não carregar. */
@@ -913,6 +932,44 @@ class Tile {
   close() { this.dropPeer(); this.el.remove(); }
 }
 
+/**
+ * Quadro de alguém que está na sala sem tela visível (não está compartilhando, ou eu ocultei
+ * a tela dela): só o avatar, como num canal de voz.
+ */
+class Person {
+  constructor(m) {
+    this.id = m.id; this.video = null;
+    this.el = document.createElement("div");
+    this.el.className = "tile person"; this.el.tabIndex = -1;
+    this.el.addEventListener("click", e => { if (room.layout === "focus" && room.main !== this && !e.target.closest("button")) room.focus(this); });
+  }
+  update(m, hiddenStream) {
+    const sig = JSON.stringify([m.name, m.avatar, m.self, m.owner, m.guest, hiddenStream]);
+    if (sig === this.sig) return;
+    this.sig = sig;
+    const face = document.createElement("div"); face.className = "face"; face.append(avatarEl(m.name, m.avatar));
+    const head = document.createElement("div"); head.className = "tile-head";
+    const lab = document.createElement("div"); lab.className = "tile-label"; lab.style.paddingLeft = "10px";
+    const name = document.createElement("b"); name.className = "t-name"; name.textContent = m.self ? "Você" : m.name;
+    lab.append(name);
+    for (const [on, text] of [[m.owner, "dono"], [m.guest, "convidado"]]) {
+      if (!on) continue;
+      const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = text; lab.append(tag);
+    }
+    head.append(lab);
+    this.el.replaceChildren(face, head);
+    if (hiddenStream) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "btn sm show";
+      b.innerHTML = svg("i-eye", 14); b.append(m.self ? "Mostrar minha tela" : "Mostrar a tela");
+      b.onclick = () => m.self ? room.setSelfHidden(false) : room.setHidden(m.hostId, false);
+      this.el.append(b);
+    }
+  }
+  fullscreen() {}
+  close() { this.el.remove(); }
+}
+
 /* ===================================================================
    A SALA: presença, pessoas, telas dos outros, pedidos de entrada
    =================================================================== */
@@ -921,8 +978,6 @@ const STATE_TEXT = {
   waiting:    { spin: true,  title: "Pedido enviado", sub: "Quem criou a sala precisa permitir sua entrada." },
   password:   { spin: false, title: "Esta sala pede senha" },
   error:      { spin: false, title: "Não foi possível entrar" },
-  empty:      { spin: false, title: "Ninguém compartilhando ainda", sub: "A tela aparece sozinha quando alguém começar. Você também pode compartilhar a sua." },
-  allHidden:  { spin: false, title: "Nenhuma tela visível", sub: "Mostre uma tela pela lista de pessoas ou compartilhe a sua." },
 };
 
 const room = {
@@ -931,6 +986,7 @@ const room = {
   hidden: new Set(),           // ids de telas que eu ocultei
   selfHidden: false,           // minha própria prévia oculta (a transmissão continua)
   members: [], requests: new Map(),
+  people: new Map(),           // id da pessoa -> Person (quadro de avatar)
   layout: store.get("layout", "grid"), main: null, peopleOpen: store.get("people", true),
 
   enter(code, create = {}) {
@@ -947,6 +1003,7 @@ const room = {
     this.closed = true;
     const ws = this.ws; this.ws = null; ws?.close();
     this.tiles.forEach(t => t.close()); this.tiles.clear();
+    this.people.forEach(p => p.close()); this.people.clear();
     this.code = ""; this.members = []; this.requests.clear(); this.main = null;
   },
 
@@ -961,6 +1018,7 @@ const room = {
   },
   reset(state, msg) {
     this.tiles.forEach(t => t.close()); this.tiles.clear(); this.hidden.clear();
+    if (state !== "in") this.members = [];
     this.setState(state, msg);
   },
   setState(state, msg = "") { this.state = state; this.stateMsg = msg; this.render(); },
@@ -1014,10 +1072,26 @@ const room = {
     this.requests.delete(id); this.renderRequests();
   },
 
-  /** Quadros na grade agora: telas dos outros que não ocultei, mais a minha (se não ocultei). */
+  /**
+   * Quadros na grade agora, um por pessoa na sala: a tela de quem está compartilhando
+   * (se eu não ocultei) ou o avatar de quem não está.
+   */
   visible() {
-    const list = [...this.tiles.values()].filter(t => !this.hidden.has(t.hostId));
-    if (host.live && host.selfTile && !this.selfHidden) list.push(host.selfTile);
+    const list = [], ids = new Set();
+    for (const m of this.members) {
+      ids.add(m.id);
+      const tile = m.self ? (host.live && !this.selfHidden ? host.selfTile : null)
+        : (m.sharing && !this.hidden.has(m.hostId) ? this.tiles.get(m.hostId) : null);
+      if (tile) { list.push(tile); continue; }
+      let p = this.people.get(m.id);
+      if (!p) this.people.set(m.id, p = new Person(m));
+      p.update(m, m.self ? host.live : !!m.sharing && this.tiles.has(m.hostId));
+      list.push(p);
+    }
+    for (const [id, p] of this.people) if (!ids.has(id)) { p.close(); this.people.delete(id); }
+    // telas que chegaram antes de a lista de pessoas atualizar
+    for (const t of this.tiles.values()) if (!this.hidden.has(t.hostId) && !list.includes(t)) list.push(t);
+    if (host.live && host.selfTile && !this.selfHidden && !list.includes(host.selfTile)) list.push(host.selfTile);
     return list;
   },
 
@@ -1026,7 +1100,7 @@ const room = {
     if (!all.includes(this.main)) this.main = all[0] || null;
     const focus = this.layout === "focus" && n > 1;
     tiles.className = "tiles" + (focus ? " focus" : "") + (n === 3 ? " n3" : "");
-    tiles.style.setProperty("--cols", n <= 1 ? 1 : n <= 4 ? 2 : 3);
+    tiles.style.setProperty("--cols", n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4);
     tiles.style.setProperty("--thumbs", Math.max(1, n - 1));
     // Só acrescenta e remove; a posição vem do CSS. Mover um <video> no DOM pausa a reprodução.
     for (const c of [...tiles.children]) if (c.classList.contains("tile") && !all.some(t => t.el === c)) c.remove();
@@ -1034,12 +1108,11 @@ const room = {
       t.el.style.order = focus && t === this.main ? -1 : i;
       t.el.classList.toggle("main", t === this.main);
       t.el.classList.toggle("odd", n === 3 && i === 2);
-      if (t.el.parentNode !== tiles) { tiles.append(t.el); if (t.video.srcObject) t.video.play().catch(() => {}); }
+      if (t.el.parentNode !== tiles) { tiles.append(t.el); if (t.video?.srcObject) t.video.play().catch(() => {}); }
     });
 
     // caixa de estado: conectando, esperando aprovação, senha, erro, sala vazia
-    const sharers = this.tiles.size + (host.live ? 1 : 0);
-    const st = this.state !== "in" ? this.state : n ? null : sharers ? "allHidden" : "empty";
+    const st = this.state !== "in" ? this.state : n ? null : "connecting";
     $("#state-box").classList.toggle("hidden", !st);
     if (st) {
       const T = STATE_TEXT[st];
@@ -1052,32 +1125,18 @@ const room = {
       if (st === "password" && document.activeElement !== $("#state-key")) setTimeout(() => $("#state-key").focus(), 0);
     }
 
-    // telas ocultas: um botão para trazer cada uma de volta
-    const strip = $("#hidden-strip");
-    const back = [...this.tiles.values()].filter(t => this.hidden.has(t.hostId))
-      .map(t => ({ label: "Mostrar " + t.who.name, act: () => this.setHidden(t.hostId, false) }));
-    if (host.live && this.selfHidden) back.push({ label: "Mostrar minha tela", act: () => this.setSelfHidden(false) });
-    strip.classList.toggle("hidden", !back.length);
-    strip.replaceChildren("Telas ocultas:", ...back.map(h => {
-      const b = document.createElement("button"); b.type = "button";
-      b.innerHTML = svg("i-eye", 14); b.append(h.label); b.onclick = h.act;
-      return b;
-    }));
-
     // barra de baixo
     const inRoom = this.state === "in", sharing = host.live;
     const sb = $("#share-toggle");
-    sb.className = "btn " + (sharing ? "danger" : "primary");
-    sb.querySelector("span").textContent = sharing ? "Parar de compartilhar" : "Compartilhar tela";
+    sb.className = "dk share" + (sharing ? " stop" : "");
+    label(sb, sharing ? "Parar de compartilhar" : "Compartilhar tela");
     sb.disabled = !sharing && (!inRoom || !navigator.mediaDevices?.getDisplayMedia);
     document.querySelectorAll(".sharing-only").forEach(b => b.classList.toggle("hidden", !sharing));
     if (!sharing) $("#quality-pop").classList.add("hidden");
     $("#quality-btn").setAttribute("aria-pressed", !$("#quality-pop").classList.contains("hidden"));
-    $("#quality-btn").classList.toggle("on", !$("#quality-pop").classList.contains("hidden"));
     const sh = $("#self-hide");
     sh.setAttribute("aria-pressed", this.selfHidden);
-    sh.classList.toggle("on", this.selfHidden);
-    sh.querySelector("span").textContent = this.selfHidden ? "Mostrar minha tela" : "Ocultar minha tela";
+    label(sh, this.selfHidden ? "Mostrar minha tela" : "Ocultar minha tela");
     sh.querySelector("use").setAttribute("href", this.selfHidden ? "#i-eye" : "#i-eye-off");
     $("#lay-grid").setAttribute("aria-pressed", !focus);
     $("#lay-focus").setAttribute("aria-pressed", focus);
@@ -1175,7 +1234,9 @@ const host = {
     const p = PRESETS[this.preset];
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: p.fps, max: p.fps } },
+      // com áudio, o seletor do navegador mostra a caixa "Compartilhar áudio" (aba ou sistema)
       audio: this.wantAudio,
+      ...(this.wantAudio ? { systemAudio: "include" } : {}),
     });
     const track = stream.getVideoTracks()[0];
     track.contentHint = p.hint;           // diz ao encoder o que priorizar
@@ -1388,13 +1449,13 @@ const host = {
   },
 
   renderPaused() {
-    $("#pause span").textContent = this.paused ? "Retomar" : "Pausar";
+    label($("#pause"), this.paused ? "Retomar a transmissão" : "Pausar a transmissão");
     $("#pause use").setAttribute("href", this.paused ? "#i-play" : "#i-pause");
     this.selfTile?.setState(this.paused ? "paused" : "live", this.paused ? "Os outros veem o último quadro congelado." : "");
   },
   renderAudio() {
     const b = $("#host-audio"), on = this.audioTrack?.enabled;
-    b.querySelector("span").textContent = !this.audioTrack ? "Ativar áudio" : on ? "Áudio ligado" : "Áudio mudo";
+    label(b, !this.audioTrack ? "Enviar o áudio também (abre o seletor de novo)" : on ? "Áudio ligado: clique para silenciar" : "Áudio mudo: clique para ligar");
     b.querySelector("use").setAttribute("href", on ? "#i-vol" : "#i-mute");
     b.classList.toggle("on", !!on);
   },
@@ -1426,7 +1487,8 @@ const host = {
 
 /** Clique em "Compartilhar tela": escolhe a janela e já entra/transmite na sala. */
 async function startSharing(code, create = {}) {
-  host.preset = chosenPreset; host.codec = $("#codec").value; host.wantAudio = false;
+  host.preset = chosenPreset; host.codec = $("#codec").value;
+  host.wantAudio = true;   // o padrão é já ir com áudio; a pessoa pode desmarcar no seletor do navegador
   try { await loadConfig(); await host.capture(); }
   catch (e) { if (e.name !== "NotAllowedError") toast("Erro: " + e.message); host.stop(); return; }
   const created = !room.code;

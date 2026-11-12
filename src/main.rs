@@ -6,6 +6,7 @@
 //! TURN quando o NAT bloquear. Resultado: poucos MB de RAM no servidor.
 
 use axum::{
+    body::Bytes,
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Query, State,
@@ -15,9 +16,10 @@ use axum::{
         HeaderMap, StatusCode,
     },
     response::{Html, IntoResponse, Redirect, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -259,9 +261,9 @@ impl Room {
         let mut list: Vec<_> = by.into_iter().collect();
         list.sort_by_key(|(_, (first, _, _))| *first);
         list.into_iter()
-            .map(|(client, (_, p, host))| {
+            .map(|(client, (first, p, host))| {
                 json!({
-                    "name": p.name, "avatar": p.avatar, "guest": p.guest,
+                    "id": first, "name": p.name, "avatar": p.avatar, "guest": p.guest,
                     "sharing": host.is_some(), "hostId": host,
                     "self": client == me, "owner": client == self.owner,
                 })
@@ -290,6 +292,14 @@ struct AppState {
     sessions: Mutex<HashMap<String, (User, Instant)>>,
     /// `state` do OAuth -> (para onde voltar, quando começou)
     logins: Mutex<HashMap<String, (String, Instant)>>,
+    /// Endereço público do site, sem barra final (para os links enviados ao Discord).
+    public_url: String,
+    /// Webhook de um canal do Discord: recebe o aviso quando uma sala entra ao vivo.
+    webhook: Option<String>,
+    /// Chave pública do app do Discord: confere que o comando /tela veio mesmo do Discord.
+    interactions_key: Option<VerifyingKey>,
+    /// sala -> último aviso enviado (para não repetir a cada reinício de transmissão)
+    announced: Mutex<HashMap<String, Instant>>,
 }
 
 type Shared = Arc<AppState>;
@@ -321,11 +331,24 @@ async fn main() {
         max_viewers: env_or("MAX_VIEWERS", "10").parse().unwrap_or(10),
         max_hosts: env_or("MAX_HOSTS", "6").parse().unwrap_or(6),
         discord: Discord::from_env(),
+        public_url: env_or("PUBLIC_URL", "").trim_end_matches('/').to_string(),
+        webhook: std::env::var("DISCORD_WEBHOOK_URL").ok().filter(|v| !v.is_empty()),
+        interactions_key: interactions_key_from_env(),
         ..Default::default()
     });
     match &state.discord {
         Some(d) => eprintln!("login com Discord ligado; redirect URI: {}", d.redirect_uri()),
         None => eprintln!("login com Discord desligado (defina DISCORD_CLIENT_ID para ligar)"),
+    }
+    eprintln!(
+        "aviso de sala ao vivo no Discord: {}",
+        if state.webhook.is_some() { "ligado" } else { "desligado (defina DISCORD_WEBHOOK_URL)" }
+    );
+    if state.interactions_key.is_some() {
+        eprintln!("comando /tela ligado; Interactions Endpoint URL: {}/discord/interactions", state.public_url);
+        tokio::spawn(register_commands(state.clone()));
+    } else {
+        eprintln!("comando /tela desligado (defina DISCORD_PUBLIC_KEY)");
     }
 
     let app = Router::new()
@@ -338,6 +361,7 @@ async fn main() {
         .route("/auth/login", get(auth_login))
         .route("/auth/callback", get(auth_callback))
         .route("/auth/logout", get(auth_logout))
+        .route("/discord/interactions", post(interactions))
         .with_state(state);
 
     let addr = env_or("BIND", "0.0.0.0:8080");
@@ -550,6 +574,242 @@ async fn auth_logout(State(state): State<Shared>, headers: HeaderMap) -> Respons
     res
 }
 
+/* ------------------------------------------------------------------
+   Discord: aviso de sala ao vivo (webhook) e comando /tela (interactions)
+   ------------------------------------------------------------------ */
+
+fn hex(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 || !s.is_ascii() {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
+}
+
+fn interactions_key_from_env() -> Option<VerifyingKey> {
+    let raw = std::env::var("DISCORD_PUBLIC_KEY").ok().filter(|v| !v.is_empty())?;
+    let key = hex(raw.trim())
+        .and_then(|b| <[u8; 32]>::try_from(b).ok())
+        .and_then(|b| VerifyingKey::from_bytes(&b).ok());
+    if key.is_none() {
+        eprintln!("DISCORD_PUBLIC_KEY inválida: copie a Public Key da página General Information do app");
+    }
+    key
+}
+
+/// Tira o efeito de markdown e de menções de um texto que vai aparecer no Discord.
+fn md(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if "\\*_~`|>[]()@#:".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+const ANNOUNCE_EVERY: Duration = Duration::from_secs(300);
+
+/// Posta no canal do Discord que alguém começou a compartilhar. No máximo um aviso por sala
+/// a cada 5 minutos, para parar e voltar a compartilhar não encher o canal.
+fn announce(state: &AppState, code: &str, who: &str, access: Access) {
+    let Some(url) = state.webhook.clone() else { return };
+    {
+        let mut sent = state.announced.lock().unwrap();
+        let now = Instant::now();
+        sent.retain(|_, t| now.duration_since(*t) < ANNOUNCE_EVERY);
+        if sent.contains_key(code) {
+            return;
+        }
+        sent.insert(code.to_string(), now);
+    }
+    let link = format!("{}/?room={code}", state.public_url);
+    let note = match access {
+        Access::Open => "",
+        Access::Discord => " Só entra quem estiver logado com Discord.",
+        Access::Approve => " O dono da sala aprova quem entra.",
+        Access::Password => " A sala pede senha.",
+    };
+    let body = json!({
+        "allowed_mentions": { "parse": [] },
+        "embeds": [{
+            "title": format!("{} está ao vivo", md(who)),
+            "url": link,
+            "description": format!("Compartilhando a tela na sala `{code}`.{note}\n\n**[Assistir]({link})**"),
+            "color": 0xF23F43,
+        }],
+    });
+    let http = state.http.clone();
+    tokio::spawn(async move {
+        match http.post(&url).json(&body).send().await {
+            Ok(r) if r.status().is_success() => {}
+            Ok(r) => eprintln!("aviso no Discord falhou: HTTP {}", r.status()),
+            Err(e) => eprintln!("aviso no Discord falhou: {}", why(e)),
+        }
+    });
+}
+
+/// Nome de canal -> código de sala: minúsculas, sem acentos, só letras, números, `-` e `_`.
+fn slug(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        let c = match c.to_lowercase().next().unwrap_or(c) {
+            'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' => 'i',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            other => other,
+        };
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').chars().take(32).collect()
+}
+
+/// Erro de rede com a causa junto (o texto padrão do reqwest esconde o motivo).
+fn why(e: reqwest::Error) -> String {
+    let mut out = e.to_string();
+    let mut src = std::error::Error::source(&e);
+    while let Some(s) = src {
+        out.push_str(": ");
+        out.push_str(&s.to_string());
+        src = s.source();
+    }
+    out
+}
+
+/// Registra o comando /tela no app do Discord ao iniciar (repetir a cada início não faz mal).
+async fn register_commands(state: Shared) {
+    let Some(d) = &state.discord else {
+        eprintln!("comando /tela: falta DISCORD_CLIENT_ID e DISCORD_CLIENT_SECRET para registrar o comando");
+        return;
+    };
+    // a rede pode não estar pronta logo que o container sobe: tenta de novo algumas vezes
+    for wait in [0, 5, 20, 60, 300] {
+        tokio::time::sleep(Duration::from_secs(wait)).await;
+        match register_once(&state, d).await {
+            Ok(()) => return eprintln!("comando /tela registrado no Discord"),
+            Err(e) => eprintln!("comando /tela: não consegui registrar no Discord: {e}"),
+        }
+    }
+}
+
+async fn register_once(state: &AppState, d: &Discord) -> Result<(), String> {
+    let result: Result<(), String> = async {
+        let tok: Value = state
+            .http
+            .post(format!("{}/oauth2/token", d.api))
+            .basic_auth(&d.client_id, Some(&d.client_secret))
+            .form(&[("grant_type", "client_credentials"), ("scope", "applications.commands.update")])
+            .send()
+            .await
+            .map_err(why)?
+            .json()
+            .await
+            .map_err(why)?;
+        let access = tok["access_token"].as_str().ok_or("o Discord não devolveu um token")?;
+        let commands = json!([{
+            "name": "tela",
+            "description": "Abre uma sala para compartilhar a tela com o pessoal",
+            "type": 1,
+            "options": [{
+                "type": 3,
+                "name": "sala",
+                "description": "Nome da sala (se não disser, usa o nome deste canal)",
+                "required": false,
+            }],
+        }]);
+        let res = state
+            .http
+            .put(format!("{}/applications/{}/commands", d.api, d.client_id))
+            .bearer_auth(access)
+            .json(&commands)
+            .send()
+            .await
+            .map_err(why)?;
+        if res.status().is_success() { Ok(()) } else { Err(format!("HTTP {}", res.status())) }
+    }
+    .await;
+    result
+}
+
+/// O Discord chama este endereço quando alguém usa /tela. Só vale com a assinatura dele.
+async fn interactions(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
+    let Some(key) = &state.interactions_key else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let sig = header("x-signature-ed25519").and_then(hex).and_then(|b| Signature::from_slice(&b).ok());
+    let (Some(sig), Some(ts)) = (sig, header("x-signature-timestamp")) else {
+        return (StatusCode::UNAUTHORIZED, "assinatura ausente").into_response();
+    };
+    let mut signed = ts.as_bytes().to_vec();
+    signed.extend_from_slice(&body);
+    if key.verify(&signed, &sig).is_err() {
+        return (StatusCode::UNAUTHORIZED, "assinatura inválida").into_response();
+    }
+    let Ok(v) = serde_json::from_slice::<Value>(&body) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let reply = match v["type"].as_u64() {
+        Some(1) => json!({ "type": 1 }), // PING: o Discord testando o endereço
+        Some(2) if v["data"]["name"] == "tela" => tela_command(&state, &v),
+        _ => json!({ "type": 4, "data": { "content": "Não conheço esse comando.", "flags": 64 } }),
+    };
+    Json(reply).into_response()
+}
+
+/// Responde ao /tela com o botão para entrar na sala (a sala passa a existir quando alguém entra).
+fn tela_command(state: &AppState, v: &Value) -> Value {
+    if state.public_url.is_empty() {
+        return json!({ "type": 4, "data": { "content": "O servidor está sem PUBLIC_URL configurado.", "flags": 64 } });
+    }
+    let asked = v["data"]["options"]
+        .as_array()
+        .and_then(|o| o.iter().find(|o| o["name"] == "sala"))
+        .and_then(|o| o["value"].as_str())
+        .map(slug)
+        .filter(|s| !s.is_empty());
+    let from_channel = v["channel"]["name"].as_str().map(slug).filter(|s| !s.is_empty());
+    let code = asked.or(from_channel).unwrap_or_else(|| token()[..8].to_string());
+    let who = v["member"]["nick"]
+        .as_str()
+        .or(v["member"]["user"]["global_name"].as_str())
+        .or(v["member"]["user"]["username"].as_str())
+        .or(v["user"]["global_name"].as_str())
+        .or(v["user"]["username"].as_str())
+        .unwrap_or("Alguém");
+
+    let (people, live) = {
+        let rooms = state.rooms.lock().unwrap();
+        rooms.get(&code).map_or((0, 0), |r| {
+            let people = r.peers.values().map(|p| p.client.as_str()).collect::<HashSet<_>>().len();
+            (people, r.peers.values().filter(|p| p.role == Role::Host).count())
+        })
+    };
+    let content = if people > 0 {
+        format!("A sala `{code}` já tem {people} na sala e {live} ao vivo. Entre para assistir ou compartilhar a sua tela.")
+    } else {
+        format!("**{}** abriu a sala `{code}`. Entre para compartilhar a sua tela ou assistir.", md(who))
+    };
+    json!({
+        "type": 4,
+        "data": {
+            "content": content,
+            "allowed_mentions": { "parse": [] },
+            "components": [{
+                "type": 1,
+                "components": [{ "type": 2, "style": 5, "label": "Entrar na sala", "url": format!("{}/?room={code}", state.public_url) }],
+            }],
+        },
+    })
+}
+
 /// Salas visíveis em que alguém está compartilhando ("Ao vivo agora" na tela inicial).
 async fn rooms_list(State(state): State<Shared>) -> Json<Value> {
     let rooms = state.rooms.lock().unwrap();
@@ -641,8 +901,10 @@ fn deny(message: &str) -> Value {
 }
 
 /// Coloca a conexão na sala e avisa todo mundo. Chamada com o lock das salas.
-fn join(state: &AppState, room: &mut Room, id: u64, me: Peer) -> Result<(), &'static str> {
+fn join(state: &AppState, code: &str, room: &mut Room, id: u64, me: Peer) -> Result<(), &'static str> {
     let count = |role| room.peers.values().filter(|p| p.role == role).count();
+    // a sala acabou de entrar ao vivo: avisa o canal do Discord (só salas visíveis)
+    let goes_live = me.role == Role::Host && count(Role::Host) == 0 && room.listed;
     if me.role == Role::Host && count(Role::Host) >= state.max_hosts {
         return Err("Já tem gente demais compartilhando nesta sala.");
     }
@@ -678,6 +940,9 @@ fn join(state: &AppState, room: &mut Room, id: u64, me: Peer) -> Result<(), &'st
                 }
             }
         }
+    }
+    if goes_live {
+        announce(state, code, &me.name, room.access);
     }
     room.peers.insert(id, me);
     room.broadcast_members();
@@ -764,7 +1029,7 @@ async fn peer_session(socket: WebSocket, mut params: JoinParams, state: Shared) 
         match verdict {
             Ok(()) => {
                 room.admitted.insert(params.client.clone());
-                match join(&state, room, id, peer(&params, &tx)) {
+                match join(&state, &params.room, room, id, peer(&params, &tx)) {
                     Ok(()) => Gate::Joined,
                     Err(msg) => Gate::Deny(deny(msg)),
                 }
@@ -785,7 +1050,9 @@ async fn peer_session(socket: WebSocket, mut params: JoinParams, state: Shared) 
             };
             let mut rooms = state.rooms.lock().unwrap();
             match (answer, rooms.get_mut(&params.room)) {
-                (Some(Ok(true)), Some(room)) => join(&state, room, id, peer(&params, &tx)).err().map(deny),
+                (Some(Ok(true)), Some(room)) => {
+                    join(&state, &params.room, room, id, peer(&params, &tx)).err().map(deny)
+                }
                 (Some(Ok(false)), _) => Some(deny("O dono da sala não permitiu a entrada.")),
                 (Some(_), _) => Some(deny("A sala fechou antes de alguém responder.")),
                 (None, room) => {

@@ -14,6 +14,9 @@ services:
       DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"
       DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"
       DISCORD_GUILD_ID: "${DISCORD_GUILD_ID:-}"
+      # Aviso de sala ao vivo num canal e comando /tela (os dois opcionais)
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL:-}"
+      DISCORD_PUBLIC_KEY: "${DISCORD_PUBLIC_KEY:-}"
       TURN_URL: "turn:srv1597622.hstgr.cloud:3478?transport=udp,turn:srv1597622.hstgr.cloud:3478?transport=tcp"
       TURN_USER: "screenshare"
       TURN_PASS: "${TURN_PASS:?defina TURN_PASS no arquivo .env}"

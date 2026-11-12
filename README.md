@@ -70,6 +70,27 @@ reconstrói, confere o site e volta para a versão anterior se algo falhar.
 
 As sessões ficam na memória do servidor e valem 30 dias; reiniciar o container pede novo login.
 
+## Discord: aviso de sala ao vivo e comando `/tela`
+
+Os dois são opcionais e independentes.
+
+**Aviso no canal.** Quando alguém começa a compartilhar numa sala visível, o servidor posta
+no canal "Fulano está ao vivo" com o link (no máximo um aviso por sala a cada 5 minutos).
+
+1. No Discord: Editar canal -> Integrações -> Webhooks -> Novo webhook -> Copiar URL do webhook.
+2. Coloque a URL em `DISCORD_WEBHOOK_URL` no `.env` e rode `docker compose up -d`.
+
+**Comando `/tela`.** Responde no canal com o botão "Entrar na sala". Sem argumento, a sala
+tem o nome do canal; `/tela sala:nome` escolhe outro. Usa o mesmo app do login.
+
+1. No portal de desenvolvedores, em General Information, copie a **Public Key** para
+   `DISCORD_PUBLIC_KEY` no `.env` e rode `docker compose up -d`. O log deve mostrar
+   "comando /tela registrado no Discord".
+2. Na mesma página, preencha **Interactions Endpoint URL** com
+   `https://edoganjore.com.br/discord/interactions` e salve (o Discord testa o endereço na hora).
+3. Instale o app no seu servidor do Discord abrindo
+   `https://discord.com/oauth2/authorize?client_id=SEU_CLIENT_ID&scope=applications.commands`.
+
 ## Variáveis de ambiente
 
 | Variável      | Padrão                           | Uso                                             |
@@ -83,6 +104,8 @@ As sessões ficam na memória do servidor e valem 30 dias; reiniciar o container
 | `PUBLIC_URL`  | —                                | Endereço público da página (obrigatório com Discord) |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | — | Liga o login com Discord                      |
 | `DISCORD_GUILD_ID` | —                           | Restringe o login aos membros de um servidor    |
+| `DISCORD_WEBHOOK_URL` | —                        | Canal que recebe o aviso de sala ao vivo        |
+| `DISCORD_PUBLIC_KEY` | —                         | Liga o comando `/tela`                          |
 
 ## Registro
 
