@@ -713,7 +713,8 @@ async fn register_once(state: &AppState, d: &Discord) -> Result<(), String> {
             .await
             .map_err(why)?;
         let access = tok["access_token"].as_str().ok_or("o Discord não devolveu um token")?;
-        let commands = json!([{
+        // POST cria ou atualiza só o /tela; os outros comandos que o app já tiver ficam como estão
+        let command = json!({
             "name": "tela",
             "description": "Abre uma sala para compartilhar a tela com o pessoal",
             "type": 1,
@@ -723,12 +724,12 @@ async fn register_once(state: &AppState, d: &Discord) -> Result<(), String> {
                 "description": "Nome da sala (se não disser, usa o nome deste canal)",
                 "required": false,
             }],
-        }]);
+        });
         let res = state
             .http
-            .put(format!("{}/applications/{}/commands", d.api, d.client_id))
+            .post(format!("{}/applications/{}/commands", d.api, d.client_id))
             .bearer_auth(access)
-            .json(&commands)
+            .json(&command)
             .send()
             .await
             .map_err(why)?;
